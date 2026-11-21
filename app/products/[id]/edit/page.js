@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 
 const CATEGORIES = [
@@ -21,6 +22,7 @@ export default function EditProductPage({ params }) {
   const router = useRouter();
   const unwrappedParams = use(params);
   const id = unwrappedParams.id;
+  const { data: session, status: authStatus } = useSession();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -29,14 +31,13 @@ export default function EditProductPage({ params }) {
     category: "Textbooks",
     condition: "Good",
     image: "",
-    sellerName: "",
-    sellerEmail: "",
     status: "Available",
   });
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [authorized, setAuthorized] = useState(true);
 
   useEffect(() => {
     async function loadProduct() {
@@ -45,6 +46,17 @@ export default function EditProductPage({ params }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load product");
         const p = data.product;
+
+        if (session?.user) {
+          const isOwner =
+            (p.ownerId && p.ownerId.toString() === session.user.id) ||
+            p.sellerEmail === session.user.email;
+          const isAdmin = session.user.role === "ADMIN";
+          if (!isOwner && !isAdmin) {
+            setAuthorized(false);
+          }
+        }
+
         setFormData({
           name: p.name || "",
           description: p.description || "",
@@ -52,8 +64,6 @@ export default function EditProductPage({ params }) {
           category: p.category || "Textbooks",
           condition: p.condition || "Good",
           image: p.image || "",
-          sellerName: p.sellerName || "",
-          sellerEmail: p.sellerEmail || "",
           status: p.status || "Available",
         });
       } catch (err) {
@@ -62,8 +72,13 @@ export default function EditProductPage({ params }) {
         setInitialLoading(false);
       }
     }
-    loadProduct();
-  }, [id]);
+
+    if (authStatus === "authenticated") {
+      loadProduct();
+    } else if (authStatus === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [id, session, authStatus, router]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -93,10 +108,24 @@ export default function EditProductPage({ params }) {
     }
   }
 
-  if (initialLoading) {
+  if (initialLoading || authStatus === "loading") {
     return (
       <div className="empty-state">
         <p className="empty-state-title">Loading listing...</p>
+      </div>
+    );
+  }
+
+  if (!authorized) {
+    return (
+      <div className="empty-state" style={{ maxWidth: "540px", margin: "40px auto" }}>
+        <h3 className="empty-state-title">Access Denied</h3>
+        <p className="empty-state-text">
+          You are not authorized to edit this listing because you do not own it.
+        </p>
+        <Link href={`/products/${id}`} className="btn btn-primary">
+          Back to Item
+        </Link>
       </div>
     );
   }

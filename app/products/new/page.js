@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 
 const CATEGORIES = [
@@ -18,6 +19,8 @@ const CONDITIONS = ["Brand New", "Like New", "Good", "Fair"];
 
 export default function NewProductPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -25,8 +28,6 @@ export default function NewProductPage() {
     category: "Textbooks",
     condition: "Good",
     image: "",
-    sellerName: "",
-    sellerEmail: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -42,7 +43,12 @@ export default function NewProductPage() {
     e.preventDefault();
     setError("");
 
-    if (!formData.name || !formData.description || !formData.price || !formData.sellerName || !formData.sellerEmail) {
+    if (!session?.user) {
+      setError("You must be logged in to post an item.");
+      return;
+    }
+
+    if (!formData.name || !formData.description || !formData.price) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -72,6 +78,33 @@ export default function NewProductPage() {
     }
   }
 
+  if (status === "loading") {
+    return (
+      <div className="empty-state">
+        <p className="empty-state-title">Checking login session...</p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated" || !session) {
+    return (
+      <div className="empty-state" style={{ maxWidth: "540px", margin: "40px auto" }}>
+        <h3 className="empty-state-title">Login Required</h3>
+        <p className="empty-state-text">
+          You must be logged into your student account to list an item on CampusCart.
+        </p>
+        <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+          <Link href="/login" className="btn btn-primary">
+            Log In
+          </Link>
+          <Link href="/register" className="btn btn-secondary">
+            Create Account
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: "680px", margin: "0 auto" }}>
       <div style={{ marginBottom: "20px" }}>
@@ -83,7 +116,7 @@ export default function NewProductPage() {
       <div className="filter-card">
         <h1 className="page-title" style={{ marginBottom: "6px" }}>List an Item for Sale</h1>
         <p className="page-subtitle" style={{ marginBottom: "20px" }}>
-          Post your used book, calculator, cycle, or room item for college peers.
+          Posting as <strong>{session.user.name}</strong> ({session.user.email})
         </p>
 
         {error && <div className="alert-box alert-error">{error}</div>}
@@ -180,40 +213,6 @@ export default function NewProductPage() {
               rows={4}
               required
             />
-          </div>
-
-          <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px", marginTop: "4px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#1e293b", marginBottom: "12px" }}>
-              Seller Contact Details
-            </h3>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              <div className="form-group">
-                <label className="form-label">Your Full Name *</label>
-                <input
-                  type="text"
-                  name="sellerName"
-                  className="form-input"
-                  placeholder="e.g. Devanshi"
-                  value={formData.sellerName}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">College Email *</label>
-                <input
-                  type="email"
-                  name="sellerEmail"
-                  className="form-input"
-                  placeholder="e.g. devanshi@college.edu"
-                  value={formData.sellerEmail}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-            </div>
           </div>
 
           <div style={{ display: "flex", gap: "12px", marginTop: "12px" }}>

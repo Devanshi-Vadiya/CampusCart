@@ -2,12 +2,14 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 
 export default function ProductDetailPage({ params }) {
   const router = useRouter();
   const unwrappedParams = use(params);
   const id = unwrappedParams.id;
+  const { data: session } = useSession();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,23 @@ export default function ProductDetailPage({ params }) {
   useEffect(() => {
     fetchProduct();
   }, [id]);
+
+  useEffect(() => {
+    if (session?.user) {
+      setEnquiryForm((prev) => ({
+        ...prev,
+        buyerName: prev.buyerName || session.user.name || "",
+        buyerEmail: prev.buyerEmail || session.user.email || "",
+      }));
+    }
+  }, [session]);
+
+  const isOwner =
+    session?.user &&
+    ((product?.ownerId && product.ownerId.toString() === session.user.id) ||
+      product?.sellerEmail === session.user.email);
+  const isAdmin = session?.user?.role === "ADMIN";
+  const canManage = isOwner || isAdmin;
 
   async function handleStatusChange(newStatus) {
     try {
@@ -102,8 +121,6 @@ export default function ProductDetailPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: id,
-          productName: product.name,
-          sellerEmail: product.sellerEmail,
           buyerName: enquiryForm.buyerName,
           buyerEmail: enquiryForm.buyerEmail,
           message: enquiryForm.message,
@@ -118,7 +135,12 @@ export default function ProductDetailPage({ params }) {
       }
 
       setEnquirySuccess("Your enquiry has been sent to the seller!");
-      setEnquiryForm({ buyerName: "", buyerEmail: "", message: "", offerPrice: "" });
+      setEnquiryForm({
+        buyerName: session?.user?.name || "",
+        buyerEmail: session?.user?.email || "",
+        message: "",
+        offerPrice: "",
+      });
     } catch (err) {
       setEnquiryError(err.message);
     } finally {
@@ -171,55 +193,59 @@ export default function ProductDetailPage({ params }) {
             )}
           </div>
 
-          <div className="filter-card" style={{ marginTop: "20px" }}>
-            <h4 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "10px", color: "#334155" }}>
-              Seller Listing Controls
-            </h4>
-            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}>
-              Are you {product.sellerName}? You can update availability, edit, or delete this item:
-            </p>
+          {canManage && (
+            <div className="filter-card" style={{ marginTop: "20px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "6px", color: "#334155" }}>
+                {isAdmin ? "🛡️ Administrator Controls" : "Listing Management Controls"}
+              </h4>
+              <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}>
+                {isAdmin
+                  ? "As an administrator, you have permission to manage this listing."
+                  : "You are the owner of this listing. You can update availability, edit, or delete it:"}
+              </p>
 
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
-              <button
-                type="button"
-                onClick={() => handleStatusChange("Available")}
-                disabled={statusLoading || product.status === "Available"}
-                className={`btn btn-sm ${product.status === "Available" ? "btn-success" : "btn-secondary"}`}
-              >
-                Available
-              </button>
-              <button
-                type="button"
-                onClick={() => handleStatusChange("Reserved")}
-                disabled={statusLoading || product.status === "Reserved"}
-                className={`btn btn-sm ${product.status === "Reserved" ? "btn-primary" : "btn-secondary"}`}
-              >
-                Reserved
-              </button>
-              <button
-                type="button"
-                onClick={() => handleStatusChange("Sold")}
-                disabled={statusLoading || product.status === "Sold"}
-                className={`btn btn-sm ${product.status === "Sold" ? "btn-danger" : "btn-secondary"}`}
-              >
-                Sold
-              </button>
-            </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange("Available")}
+                  disabled={statusLoading || product.status === "Available"}
+                  className={`btn btn-sm ${product.status === "Available" ? "btn-success" : "btn-secondary"}`}
+                >
+                  Available
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange("Reserved")}
+                  disabled={statusLoading || product.status === "Reserved"}
+                  className={`btn btn-sm ${product.status === "Reserved" ? "btn-primary" : "btn-secondary"}`}
+                >
+                  Reserved
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange("Sold")}
+                  disabled={statusLoading || product.status === "Sold"}
+                  className={`btn btn-sm ${product.status === "Sold" ? "btn-danger" : "btn-secondary"}`}
+                >
+                  Sold
+                </button>
+              </div>
 
-            <div style={{ display: "flex", gap: "10px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
-              <Link href={`/products/${product._id}/edit`} className="btn btn-secondary btn-sm">
-                ✏️ Edit Listing
-              </Link>
-              <button
-                type="button"
-                onClick={handleDeleteProduct}
-                disabled={deleteLoading}
-                className="btn btn-danger btn-sm"
-              >
-                {deleteLoading ? "Deleting..." : "🗑️ Delete Listing"}
-              </button>
+              <div style={{ display: "flex", gap: "10px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                <Link href={`/products/${product._id}/edit`} className="btn btn-secondary btn-sm">
+                  ✏️ Edit Listing
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleDeleteProduct}
+                  disabled={deleteLoading}
+                  className="btn btn-danger btn-sm"
+                >
+                  {deleteLoading ? "Deleting..." : "🗑️ Delete Listing"}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div>
