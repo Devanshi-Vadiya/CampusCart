@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Enquiry from "@/models/Enquiry";
+import { auth } from "@/lib/auth";
 
 export async function PATCH(request, { params }) {
   try {
     await connectDB();
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Please log in" },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { status } = body;
@@ -16,20 +26,29 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    const updated = await Enquiry.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
-
-    if (!updated) {
+    const enquiry = await Enquiry.findById(id);
+    if (!enquiry) {
       return NextResponse.json(
         { success: false, error: "Enquiry not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ success: true, enquiry: updated });
+    const isAuthorized =
+      session.user.role === "ADMIN" ||
+      enquiry.sellerEmail === session.user.email;
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Not authorized to update this enquiry" },
+        { status: 403 }
+      );
+    }
+
+    enquiry.status = status;
+    await enquiry.save();
+
+    return NextResponse.json({ success: true, enquiry });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error.message },
@@ -41,16 +60,37 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     await connectDB();
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Please log in" },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
+    const enquiry = await Enquiry.findById(id);
 
-    const deleted = await Enquiry.findByIdAndDelete(id);
-
-    if (!deleted) {
+    if (!enquiry) {
       return NextResponse.json(
         { success: false, error: "Enquiry not found" },
         { status: 404 }
       );
     }
+
+    const isAuthorized =
+      session.user.role === "ADMIN" ||
+      enquiry.sellerEmail === session.user.email;
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Not authorized to delete this enquiry" },
+        { status: 403 }
+      );
+    }
+
+    await Enquiry.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true, message: "Enquiry deleted successfully" });
   } catch (error) {

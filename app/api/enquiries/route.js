@@ -1,18 +1,32 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Enquiry from "@/models/Enquiry";
+import Product from "@/models/Product";
+import { auth } from "@/lib/auth";
 
 export async function GET(request) {
   try {
     await connectDB();
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Please log in" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
-    const sellerEmail = searchParams.get("sellerEmail");
     const productId = searchParams.get("productId");
 
     const filter = {};
-    if (sellerEmail) {
-      filter.sellerEmail = sellerEmail.toLowerCase();
+    if (session.user.role === "ADMIN") {
+      const requestedEmail = searchParams.get("sellerEmail");
+      if (requestedEmail) filter.sellerEmail = requestedEmail.toLowerCase();
+    } else {
+      filter.sellerEmail = session.user.email.toLowerCase();
     }
+
     if (productId) {
       filter.productId = productId;
     }
@@ -30,20 +44,37 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     await connectDB();
+    const session = await auth();
     const body = await request.json();
-    const { productId, productName, sellerEmail, buyerName, buyerEmail, message, offerPrice } = body;
+    const { productId, message, offerPrice } = body;
 
-    if (!productId || !productName || !sellerEmail || !buyerName || !buyerEmail || !message) {
+    let buyerName = body.buyerName;
+    let buyerEmail = body.buyerEmail;
+
+    if (session?.user) {
+      buyerName = buyerName || session.user.name;
+      buyerEmail = buyerEmail || session.user.email;
+    }
+
+    if (!productId || !message || !buyerName || !buyerEmail) {
       return NextResponse.json(
         { success: false, error: "Please fill all required fields" },
         { status: 400 }
       );
     }
 
+    const product = await Product.findById(productId);
+    if (!product) {
+      return NextResponse.json(
+        { success: false, error: "Product not found" },
+        { status: 404 }
+      );
+    }
+
     const enquiry = await Enquiry.create({
       productId,
-      productName,
-      sellerEmail: sellerEmail.toLowerCase(),
+      productName: product.name,
+      sellerEmail: product.sellerEmail.toLowerCase(),
       buyerName,
       buyerEmail: buyerEmail.toLowerCase(),
       message,

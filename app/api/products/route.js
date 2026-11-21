@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Product from "@/models/Product";
+import { auth } from "@/lib/auth";
 
 export async function GET(request) {
   try {
@@ -11,6 +12,7 @@ export async function GET(request) {
     const condition = searchParams.get("condition") || "";
     const status = searchParams.get("status") || "";
     const sellerEmail = searchParams.get("sellerEmail") || "";
+    const ownerId = searchParams.get("ownerId") || "";
     const sort = searchParams.get("sort") || "newest";
 
     const filter = {};
@@ -27,7 +29,9 @@ export async function GET(request) {
     if (status && status !== "All") {
       filter.status = status;
     }
-    if (sellerEmail) {
+    if (ownerId) {
+      filter.ownerId = ownerId;
+    } else if (sellerEmail) {
       filter.sellerEmail = sellerEmail.toLowerCase();
     }
 
@@ -53,10 +57,19 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     await connectDB();
-    const body = await request.json();
-    const { name, description, price, category, condition, image, sellerName, sellerEmail } = body;
+    const session = await auth();
 
-    if (!name || !description || price === undefined || !category || !condition || !sellerName || !sellerEmail) {
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Please log in to post an item" },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { name, description, price, category, condition, image } = body;
+
+    if (!name || !description || price === undefined || !category || !condition) {
       return NextResponse.json(
         { success: false, error: "Please fill all required fields" },
         { status: 400 }
@@ -70,8 +83,9 @@ export async function POST(request) {
       category,
       condition,
       image: image || "",
-      sellerName,
-      sellerEmail: sellerEmail.toLowerCase(),
+      ownerId: session.user.id,
+      sellerName: session.user.name || "Student",
+      sellerEmail: session.user.email.toLowerCase(),
       status: "Available",
     });
 

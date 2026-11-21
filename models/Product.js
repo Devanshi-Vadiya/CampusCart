@@ -31,6 +31,10 @@ const ProductSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     sellerName: {
       type: String,
       required: true,
