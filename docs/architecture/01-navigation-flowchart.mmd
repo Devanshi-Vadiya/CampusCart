@@ -1,0 +1,56 @@
+flowchart TD
+    %% Styling Classes
+    classDef visitor fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef middleware fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef authPage fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef student fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef admin fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef decision fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+    classDef logout fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,color:#334155;
+
+    Start(["Visitor Opens CampusCart URL<br/>(e.g., /, /products/:id, /dashboard, /admin)"]):::visitor
+    MW{"Edge Middleware<br/>(middleware.js)<br/>Session Cookie Present?"}:::middleware
+
+    Start --> MW
+
+    %% Unauthenticated Flow
+    MW -- "No Cookie (Unauthenticated)" --> CheckAuthPath{"Requested Path is<br/>/login, /register, or /api/auth/*?"}:::decision
+    CheckAuthPath -- "Yes" --> AllowAuthPage["Render Login / Register Page (200 OK)"]:::authPage
+    CheckAuthPath -- "No" --> RedirectLogin["Redirect 307 to /login?callbackUrl=..."]:::decision
+    RedirectLogin --> AllowAuthPage
+
+    AllowAuthPage --> UserAction{"User Choice on<br/>Auth Screen"}:::authPage
+    UserAction -- "Register" --> DoRegister["Submit Name, Email, Role, Password<br/>(/register)"]:::authPage
+    UserAction -- "Login" --> DoLogin["Sign In via Credentials or Google OAuth<br/>(/login)"]:::authPage
+    DoRegister --> DoLogin
+
+    DoLogin --> AuthSuccess{"Authentication<br/>Successful?"}:::decision
+    AuthSuccess -- "No" --> ShowErr["Display Validation / Error Message"]:::decision
+    ShowErr --> AllowAuthPage
+    AuthSuccess -- "Yes" --> IssueToken["Issue Encrypted JWT Session Token<br/>Attach authjs.session-token Cookie"]:::authPage
+
+    %% Authenticated Flow
+    IssueToken --> RedirectBack["Redirect to callbackUrl<br/>(or Default /)"]:::middleware
+    RedirectBack --> MW
+
+    MW -- "Has Valid Session Cookie" --> CheckAuthVisitingPage{"Visiting /login or /register?"}:::decision
+    CheckAuthVisitingPage -- "Yes" --> RedirectHome["Redirect to Marketplace (/)"]:::middleware
+
+    CheckAuthVisitingPage -- "No" --> RouteTarget{"Target Route"}:::decision
+
+    %% Routes
+    RouteTarget -- "/ or /products/:id" --> MktView["Browse Campus Marketplace<br/>Search, Filter, View Item Details"]:::student
+    RouteTarget -- "/products/new" --> CreateView["Post New Second-Hand Listing<br/>(Attaches Owner ID from Session)"]:::student
+    RouteTarget -- "/dashboard" --> DashCheck{"Check User Role in Session"}:::decision
+    DashCheck -- "USER or ADMIN" --> StudentDash["Student Dashboard<br/>My Listings & Incoming Enquiries"]:::student
+
+    RouteTarget -- "/admin" --> AdminRoleCheck{"Check User Role in Session"}:::decision
+    AdminRoleCheck -- "role == 'ADMIN'" --> AdminDash["Admin Dashboard (200 OK)<br/>Manage All Students' Listings"]:::admin
+    AdminRoleCheck -- "role == 'USER'" --> AdminDenied["403 Access Denied View<br/>Student Redirected / Blocked"]:::decision
+
+    %% Logout
+    MktView -.-> LogoutBtn["Click 'Log Out' in Navbar"]:::logout
+    StudentDash -.-> LogoutBtn
+    AdminDash -.-> LogoutBtn
+    LogoutBtn --> EndSession["signOut({ callbackUrl: '/' })<br/>Clear Session Cookie"]:::logout
+    EndSession --> MW

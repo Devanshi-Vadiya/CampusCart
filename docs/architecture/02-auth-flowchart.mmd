@@ -1,0 +1,69 @@
+flowchart TD
+    %% Styling Classes
+    classDef client fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef auth fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef db fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#7c2d12;
+    classDef security fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+    classDef oauth fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+
+    subgraph RegistrationFlow ["1. User Registration (/register & /api/auth/register)"]
+        R1["Visitor Fills Registration Form<br/>Name, Email, Password, ConfirmPassword, Role"]:::client
+        R2{"Validation Check<br/>Fields filled & Passwords match & Length >= 6?"}:::security
+        R1 --> R2
+        R2 -- "Invalid" --> R_Err["Return 400 Bad Request<br/>Display Form Error"]:::security
+
+        R2 -- "Valid" --> R3{"Selected Role == 'ADMIN'?"}:::security
+        R3 -- "Yes" --> R4{"adminSecret ==<br/>ADMIN_SETUP_SECRET?"}:::security
+        R4 -- "Mismatch" --> R_SecErr["Return 403 Forbidden<br/>Admin provisioning restricted"]:::security
+        R4 -- "Match" --> R_AdminOk["Assigned Role = 'ADMIN'"]:::auth
+        R3 -- "No (USER)" --> R_UserOk["Assigned Role = 'USER'"]:::auth
+
+        R_AdminOk --> R5
+        R_UserOk --> R5
+        R5["Check Duplicate Email in MongoDB<br/>User.findOne({ email })"]:::db
+        R5 --> R6{"Email Exists?"}:::security
+        R6 -- "Yes" --> R_Dup["Return 409 Conflict<br/>Account already exists"]:::security
+        R6 -- "No" --> R7["Hash Password with bcryptjs<br/>bcrypt.hash(password, 10)"]:::auth
+        R7 --> R8["Save to MongoDB Collection 'users'<br/>User.create({ name, email, passwordHash, role })"]:::db
+        R8 --> R9["Return 201 Created<br/>Redirect to /login"]:::client
+    end
+
+    subgraph CredentialsFlow ["2. Credentials Authentication (Email & Password)"]
+        C1["User Submits Credentials on /login<br/>signIn('credentials', { email, password })"]:::client
+        C1 --> C2["Auth.js Credentials Provider<br/>authorize(credentials)"]:::auth
+        C2 --> C3["MongoDB Lookup<br/>User.findOne({ email })"]:::db
+        C3 --> C4{"User Exists &<br/>Has passwordHash?"}:::security
+        C4 -- "No" --> C_Fail["Throw Error: 'Invalid email or password'"]:::security
+        C4 -- "Yes" --> C5["Verify Password<br/>bcrypt.compare(password, user.passwordHash)"]:::auth
+        C5 --> C6{"Hash Matches?"}:::security
+        C6 -- "No" --> C_Fail
+        C6 -- "Yes" --> C7["Return User Object<br/>{ id, name, email, role, image }"]:::auth
+    end
+
+    subgraph GoogleOAuthFlow ["3. Google OAuth 2.0 Authentication"]
+        G1["User Clicks 'Continue with Google'<br/>signIn('google')"]:::oauth
+        G1 --> G2["Redirect to Google Accounts Consent Screen"]:::oauth
+        G2 --> G3["Google Verifies & Redirects to Callback<br/>/api/auth/callback/google"]:::oauth
+        G3 --> G4["Auth.js signIn Callback<br/>signIn({ user, account })"]:::auth
+        G4 --> G5["MongoDB Lookup: User.findOne({ email })"]:::db
+        G5 --> G6{"User Already in DB?"}:::security
+        G6 -- "No" --> G7["Create New User in MongoDB<br/>User.create({ name, email, role: 'USER', image })"]:::db
+        G6 -- "Yes" --> G8["Retrieve Existing User Role & ID"]:::db
+        G7 --> G9["Attach MongoDB _id and role to User"]:::auth
+        G8 --> G9
+    end
+
+    subgraph SessionHandling ["4. JWT & Session Token Pipeline"]
+        C7 --> JWT["jwt Callback<br/>token.id = user.id<br/>token.role = user.role"]:::auth
+        G9 --> JWT
+        JWT --> SESS["session Callback<br/>session.user.id = token.id<br/>session.user.role = token.role"]:::auth
+        SESS --> COOKIE["Encrypt JWT & Set HTTP-Only Cookie<br/>authjs.session-token"]:::auth
+        COOKIE --> REDIR["Redirect to Destination Page<br/>(callbackUrl or /)"]:::client
+    end
+
+    subgraph LogoutPipeline ["5. Sign-Out / Session Termination"]
+        L1["User Clicks 'Log Out' in Navbar"]:::client
+        L1 --> L2["Auth.js signOut({ callbackUrl: '/' })"]:::auth
+        L2 --> L3["Clear authjs.session-token Cookie<br/>Invalidate JWT Session"]:::auth
+        L3 --> L4["Edge Middleware Detects No Cookie<br/>Redirects to /login"]:::client
+    end

@@ -1,0 +1,61 @@
+flowchart TD
+    %% Styling Classes
+    classDef student fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef admin fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef api fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef db fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef guard fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+    classDef action fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a;
+
+    UserEntry(["User Enters Dashboard URL"]):::action
+
+    %% Guard Branch
+    UserEntry --> URLCheck{"Requested URL"}:::guard
+
+    %% =========================================================================
+    %% STUDENT DASHBOARD (/dashboard)
+    %% =========================================================================
+    URLCheck -- "/dashboard" --> StudentAuthCheck{"Session Status?<br/>(Edge & Client-Side)"}:::guard
+    StudentAuthCheck -- "Unauthenticated" --> RedirectLogin["Redirect 307 to /login"]:::guard
+    StudentAuthCheck -- "Authenticated (USER or ADMIN)" --> LoadStudentDash["Render Student Dashboard (/dashboard)"]:::student
+
+    LoadStudentDash --> StudentFetch["Parallel Fetch:<br/>1. GET /api/products?ownerId=session.user.id<br/>2. GET /api/enquiries"]:::api
+
+    StudentFetch --> FilterScope[("MongoDB Scoped Queries:<br/>Products where ownerId == user.id<br/>Enquiries where sellerEmail == user.email")]:::db
+
+    FilterScope --> StudentTabs{"Active Tab in Dashboard"}:::student
+
+    %% Tab 1: My Listings
+    StudentTabs -- "Tab: My Listings" --> MyListingsView["Display User's Listed Products<br/>- Image, Price, Category, Status Badge"]:::student
+    MyListingsView --> ListingActions{"User Action on Listing"}:::action
+    
+    ListingActions -- "Change Status" --> SChangeStatus["PUT /api/products/:id<br/>body: { status: 'Available' | 'Reserved' | 'Sold' }"]:::api
+    ListingActions -- "Edit Item" --> SEdit["Navigate to /products/:id/edit"]:::action
+    ListingActions -- "Delete Item" --> SDelete["DELETE /api/products/:id<br/>(Purges product + enquiries)"]:::api
+
+    %% Tab 2: Enquiries
+    StudentTabs -- "Tab: Received Enquiries" --> EnquiriesView["Display Enquiries from Potential Buyers<br/>- Product Name, Buyer Name & Email<br/>- Message & Offer Price<br/>- Status Badge (Pending / Accepted / Rejected)"]:::student
+    EnquiriesView --> EnqActions{"Seller Action on Enquiry"}:::action
+    EnqActions -- "Accept Offer" --> AcceptEnq["PATCH /api/enquiries/:id<br/>body: { status: 'Accepted' }"]:::api
+    EnqActions -- "Reject Offer" --> RejectEnq["PATCH /api/enquiries/:id<br/>body: { status: 'Rejected' }"]:::api
+
+    %% =========================================================================
+    %% ADMIN DASHBOARD (/admin)
+    %% =========================================================================
+    URLCheck -- "/admin" --> AdminAuthCheck{"Session Status & Role?<br/>session.user.role == 'ADMIN'"}:::guard
+    AdminAuthCheck -- "Unauthenticated" --> RedirectLogin
+    AdminAuthCheck -- "Role is 'USER' (Student)" --> AdminAccessDenied["Display Access Denied Notice<br/>Forbidden 403 / Redirect"]:::guard
+    AdminAuthCheck -- "Role is 'ADMIN'" --> LoadAdminDash["Render Admin Dashboard (/admin)"]:::admin
+
+    LoadAdminDash --> AdminControls["Admin Global Controls:<br/>- Search by Keyword<br/>- Filter by Category<br/>- Filter by Status (All / Available / Reserved / Sold)"]:::admin
+
+    AdminControls --> AdminFetch["Fetch All System Listings:<br/>GET /api/products?search=...&category=...&status=..."]:::api
+
+    AdminFetch --> AdminDB[("MongoDB Atlas Query:<br/>Product.find(globalFilters)<br/>(Unrestricted by ownerId)")]:::db
+
+    AdminDB --> AdminListingsTable["Render Global Management Table<br/>- All Products from All Students<br/>- Owner Name & Email<br/>- Current Status & Price"]:::admin
+
+    AdminListingsTable --> AdminModeration{"Admin Moderation Action"}:::action
+    AdminModeration -- "Moderate / Change Status" --> AChangeStatus["PUT /api/products/:id<br/>Force Status to Available / Reserved / Sold"]:::api
+    AdminModeration -- "Remove Listing" --> ADelete["DELETE /api/products/:id<br/>Permanently Delete Listing & Cascaded Enquiries"]:::api
+    AdminModeration -- "Inspect Item" --> AView["Navigate to /products/:id"]:::action

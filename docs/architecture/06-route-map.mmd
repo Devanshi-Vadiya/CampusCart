@@ -1,0 +1,86 @@
+flowchart LR
+    %% Styling Classes
+    classDef edge fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef publicRoute fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef studentRoute fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef adminRoute fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef apiRoute fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef db fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#14532d;
+
+    %% Root
+    Root["Client Request / Browser Navigation"]:::publicRoute
+
+    %% Middleware Layer
+    subgraph MW ["Edge Middleware Layer (middleware.js)"]
+        EdgeGuard["Edge Session Validator<br/>Reads authjs.session-token Cookie<br/>Intercepts All Non-Asset Requests"]:::edge
+    end
+
+    Root --> EdgeGuard
+
+    %% Public & Auth Routes
+    subgraph AuthArea ["Public & Authentication Endpoints"]
+        R_Login["/login (Sign In Page)"]:::publicRoute
+        R_Register["/register (Registration Page)"]:::publicRoute
+        API_Auth["/api/auth/[...nextauth]<br/>- GET/POST Sign In / Callback<br/>- POST Sign Out<br/>- GET Session & CSRF"]:::apiRoute
+        API_Reg["POST /api/auth/register<br/>- Public student registration<br/>- Secure admin registration with secret"]:::apiRoute
+    end
+
+    %% Protected Marketplace UI Routes
+    subgraph MarketUI ["Protected Marketplace Pages (USER & ADMIN)"]
+        R_Home["/ (Home & Marketplace Feed)<br/>- Search, Category Filter, Sort"]:::studentRoute
+        R_ProdDetail["/products/:id (Product Details)<br/>- Buyer: Enquiry form<br/>- Owner/Admin: Management controls"]:::studentRoute
+        R_ProdNew["/products/new (Create Listing)<br/>- Create second-hand product"]:::studentRoute
+        R_ProdEdit["/products/:id/edit (Edit Listing)<br/>- Modify title, price, details"]:::studentRoute
+        R_StudentDash["/dashboard (Student Dashboard)<br/>- My Listings & Received Enquiries"]:::studentRoute
+    end
+
+    %% Protected Admin UI Routes
+    subgraph AdminUI ["Protected Admin Dashboard (ADMIN Only)"]
+        R_Admin["/admin (Admin Management Console)<br/>- Full campus catalog oversight<br/>- Status override & moderation delete"]:::adminRoute
+    end
+
+    %% Protected API Endpoints
+    subgraph API_Endpoints ["REST API Handlers (App Router)"]
+        API_Products["/api/products<br/>- GET: List items (with query filters)<br/>- POST: Create listing (ownerId attached)"]:::apiRoute
+        API_ProductItem["/api/products/:id<br/>- GET: Single item lookup<br/>- PUT: Update item / change status<br/>- DELETE: Cascade delete item & enquiries"]:::apiRoute
+        API_Enquiries["/api/enquiries<br/>- GET: Fetch seller's received enquiries<br/>- POST: Submit buyer enquiry"]:::apiRoute
+        API_EnquiryItem["/api/enquiries/:id<br/>- PATCH: Update status (Accept/Reject)"]:::apiRoute
+        API_Promote["POST /api/admin/promote<br/>- Promote existing user to ADMIN role"]:::apiRoute
+        API_TestDB["GET /api/test-db<br/>- Health check & Atlas ping"]:::apiRoute
+    end
+
+    %% Database
+    subgraph DBCluster ["MongoDB Atlas Database"]
+        M_User[("Users Collection")]:::db
+        M_Product[("Products Collection")]:::db
+        M_Enquiry[("Enquiries Collection")]:::db
+    end
+
+    %% Routing Flow Connections
+    EdgeGuard -- "Unauthenticated & Auth Path" --> AuthArea
+    EdgeGuard -- "Unauthenticated & Protected Path" --> Redirect307["307 Redirect to /login?callbackUrl=..."]:::edge
+    EdgeGuard -- "Authenticated" --> MarketUI
+    EdgeGuard -- "Authenticated (Admin Role)" --> AdminUI
+    EdgeGuard -- "API Request" --> API_Endpoints
+
+    %% Page to API Interactivity
+    R_Home --> API_Products
+    R_ProdDetail --> API_ProductItem
+    R_ProdDetail --> API_Enquiries
+    R_ProdNew --> API_Products
+    R_ProdEdit --> API_ProductItem
+    R_StudentDash --> API_Products
+    R_StudentDash --> API_Enquiries
+    R_StudentDash --> API_EnquiryItem
+    R_Admin --> API_Products
+    R_Admin --> API_ProductItem
+
+    %% API to Database
+    API_Auth --> M_User
+    API_Reg --> M_User
+    API_Promote --> M_User
+    API_Products --> M_Product
+    API_ProductItem --> M_Product
+    API_ProductItem -. "Cascade Delete" .-> M_Enquiry
+    API_Enquiries --> M_Enquiry
+    API_EnquiryItem --> M_Enquiry

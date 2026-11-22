@@ -1,0 +1,47 @@
+erDiagram
+    %% CampusCart Database Entity-Relationship Diagram
+
+    USER ||--o{ PRODUCT : "creates / owns"
+    PRODUCT ||--o{ ENQUIRY : "receives"
+    USER ||--o{ ENQUIRY : "participates (buyer / seller)"
+
+    USER {
+        ObjectId _id PK "Unique identifier"
+        string name "User full name"
+        string email UK "Unique lowercase email address"
+        string passwordHash "Bcrypt hashed password (null for OAuth)"
+        string role "Role enum: USER | ADMIN (default: USER)"
+        string image "Profile avatar image URL"
+        date createdAt "Automatic creation timestamp"
+        date updatedAt "Automatic modification timestamp"
+    }
+
+    PRODUCT {
+        ObjectId _id PK "Unique product identifier"
+        string name "Item title / name"
+        string description "Detailed item condition & specs"
+        number price "Listing price in INR (min: 0)"
+        string category "Enum: Textbooks, Electronics, Stationery, Hostel & Room, Cycles & Mobility, Clothing, Other"
+        string condition "Enum: Brand New, Like New, Good, Fair"
+        string image "Product image URL"
+        ObjectId ownerId FK "Reference to USER._id"
+        string sellerName "Denormalized seller name"
+        string sellerEmail "Denormalized lowercase seller email"
+        string status "Enum: Available, Reserved, Sold (default: Available)"
+        date createdAt "Automatic creation timestamp"
+        date updatedAt "Automatic modification timestamp"
+    }
+
+    ENQUIRY {
+        ObjectId _id PK "Unique enquiry identifier"
+        ObjectId productId FK "Reference to PRODUCT._id"
+        string productName "Denormalized product name"
+        string sellerEmail "Lowercase seller contact email"
+        string buyerName "Potential buyer full name"
+        string buyerEmail "Lowercase buyer contact email"
+        string message "Buyer enquiry message or question"
+        number offerPrice "Optional counter-offer price in INR (min: 0)"
+        string status "Enum: Pending, Accepted, Rejected (default: Pending)"
+        date createdAt "Automatic creation timestamp"
+        date updatedAt "Automatic modification timestamp"
+    }

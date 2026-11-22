@@ -1,0 +1,49 @@
+flowchart TD
+    %% Styling Classes
+    classDef req fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef authCheck fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef student fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef admin fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef ok fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef deny fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+
+    Req["Client / User Action Request<br/>(API Call or Page Navigation)"]:::req
+    AuthCheck{"1. Is User Authenticated?<br/>(Valid Session in Auth.js)"}:::authCheck
+
+    Req --> AuthCheck
+    AuthCheck -- "No" --> Unauth["Return 401 Unauthorized /<br/>Redirect to /login"]:::deny
+
+    AuthCheck -- "Yes" --> ActionType{"2. What Action is<br/>Requested?"}:::authCheck
+
+    %% Read Operations
+    ActionType -- "Browse / Search Listings<br/>GET /api/products" --> ReadOk["200 OK: Return Filtered Listings"]:::ok
+    ActionType -- "View Listing Details<br/>GET /api/products/:id" --> ReadDetailOk["200 OK: Return Product Details"]:::ok
+    ActionType -- "Send Product Enquiry<br/>POST /api/enquiries" --> SendEnq["200 OK: Create Enquiry in MongoDB<br/>(Buyer Name & Email linked)"]:::ok
+
+    %% Create Listing
+    ActionType -- "Create New Listing<br/>POST /api/products" --> CreateCheck["Bind Authenticated Identity:<br/>ownerId = session.user.id<br/>sellerEmail = session.user.email"]:::student
+    CreateCheck --> SaveProduct["201 Created: Saved to MongoDB"]:::ok
+
+    %% Access Dashboard
+    ActionType -- "Access Student Dashboard<br/>/dashboard" --> CheckStudentDash["Verify Session: role == 'USER' or 'ADMIN'"]:::student
+    CheckStudentDash --> ServeStudentDash["200 OK: Load Student Profile,<br/>My Listings (scoped by ownerId),<br/>and Incoming Enquiries"]:::ok
+
+    %% Access Admin Dashboard
+    ActionType -- "Access Admin Dashboard<br/>/admin" --> CheckAdminPage{"Check Role in Session:<br/>session.user.role == 'ADMIN'?"}:::authCheck
+    CheckAdminPage -- "Yes" --> ServeAdminDash["200 OK: Load Admin Dashboard<br/>All Listings, Full Moderation Controls"]:::admin
+    CheckAdminPage -- "No (USER)" --> DenyAdminDash["403 Access Denied View<br/>'Restricted to administrators only'"]:::deny
+
+    %% Modify / Delete Listing
+    ActionType -- "Edit, Status Change, Delete Listing<br/>PUT / DELETE /api/products/:id" --> FetchItem["Fetch Listing from MongoDB<br/>Product.findById(id)"]:::authCheck
+    FetchItem --> ItemFound{"Item Exists?"}:::authCheck
+    ItemFound -- "No" --> NotFound["404 Not Found"]:::deny
+
+    ItemFound -- "Yes" --> CheckOwnership{"Server-Side Authorization Check:<br/>session.user.role == 'ADMIN'<br/>OR<br/>product.ownerId == session.user.id?"}:::authCheck
+
+    CheckOwnership -- "Yes (Admin or Owner)" --> ExecuteUpdate["Allow Operation:<br/>Update Status / Details / Delete Record"]:::ok
+    CheckOwnership -- "No (Different Student)" --> DenyUpdate["403 Forbidden Response<br/>'Forbidden: You are not authorized'"]:::deny
+
+    %% Manage Enquiries
+    ActionType -- "Update / Delete Enquiry<br/>PATCH / DELETE /api/enquiries/:id" --> CheckEnqAuth{"session.user.role == 'ADMIN'<br/>OR<br/>enquiry.sellerEmail == session.user.email?"}:::authCheck
+    CheckEnqAuth -- "Yes" --> AllowEnqChange["Update Status (Accepted/Rejected) / Delete"]:::ok
+    CheckEnqAuth -- "No" --> DenyEnqChange["403 Forbidden Response"]:::deny

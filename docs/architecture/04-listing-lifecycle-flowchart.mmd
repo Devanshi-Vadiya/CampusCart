@@ -1,0 +1,85 @@
+flowchart TD
+    %% Styling Classes
+    classDef client fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a;
+    classDef api fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef db fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef decision fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+    classDef statusAvail fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef statusRes fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#713f12;
+    classDef statusSold fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,color:#334155;
+    classDef cascade fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#881337;
+
+    %% Stage 1: Creation
+    subgraph S1 ["1. Listing Creation (/products/new)"]
+        CreatePage["Student Fills Form<br/>(Title, Desc, Price, Category, Condition, Image)"]:::client
+        SubmitCreate["POST /api/products"]:::api
+        AuthCreate{"Check Active Session<br/>session.user.id?"}:::decision
+        InjectOwner["Inject Owner Details:<br/>ownerId = session.user.id<br/>sellerName = session.user.name<br/>sellerEmail = session.user.email<br/>status = 'Available'"]:::api
+        SaveProduct[("MongoDB Atlas:<br/>Insert Product Document")]:::db
+
+        CreatePage --> SubmitCreate
+        SubmitCreate --> AuthCreate
+        AuthCreate -- "No Session (401)" --> DenyCreate["401 Unauthorized"]:::decision
+        AuthCreate -- "Valid Session" --> InjectOwner
+        InjectOwner --> SaveProduct
+    end
+
+    %% Stage 2: Discovery & Viewing
+    subgraph S2 ["2. Discovery & Role-Aware Details (/products/:id)"]
+        SaveProduct --> ViewList["Marketplace Feed (/)<br/>GET /api/products with Filters"]:::client
+        ViewList --> ViewDetail["Student / Admin Clicks Product<br/>Route: /products/:id"]:::client
+        FetchDetail["GET /api/products/:id"]:::api
+        ViewDetail --> FetchDetail
+
+        CheckOwnership{"Role & Ownership Check<br/>isOwner = (ownerId == session.id)<br/>isAdmin = (role == 'ADMIN')"}:::decision
+        FetchDetail --> CheckOwnership
+
+        %% Buyer Perspective
+        CheckOwnership -- "Neither Owner nor Admin (Buyer)" --> BuyerView["Buyer UI Mode:<br/>- View Details, Condition, Price<br/>- Seller Contact Info<br/>- Make Offer / Send Enquiry Form"]:::client
+        SendEnq["Submit Enquiry<br/>POST /api/enquiries<br/>(productId, offerPrice, message)"]:::api
+        BuyerView --> SendEnq
+        SaveEnq[("MongoDB Atlas:<br/>Insert Enquiry Record<br/>status: 'Pending'")]:::db
+        SendEnq --> SaveEnq
+
+        %% Owner / Admin Perspective
+        CheckOwnership -- "isOwner OR isAdmin" --> OwnerView["Manager UI Mode:<br/>- Quick Status Toggle Buttons<br/>- Edit Listing Button<br/>- Delete Listing Button"]:::client
+    end
+
+    %% Stage 3: Status Lifecycle & Updates
+    subgraph S3 ["3. Status Lifecycle State Machine"]
+        OwnerView --> StatusToggle["Trigger Status Change<br/>PUT /api/products/:id<br/>body: { status }"]:::api
+        
+        StateAvailable(["Status: Available<br/>(Listed on Feed)"]):::statusAvail
+        StateReserved(["Status: Reserved<br/>(Deal in Progress)"]):::statusRes
+        StateSold(["Status: Sold<br/>(Archived / Completed)"]):::statusSold
+
+        StatusToggle --> StateTransition{"Target Status"}:::decision
+        StateTransition -- "Reserve" --> StateReserved
+        StateTransition -- "Mark Sold" --> StateSold
+        StateTransition -- "Reactivate" --> StateAvailable
+        
+        StateReserved -.-> StateSold
+        StateReserved -.-> StateAvailable
+        StateSold -.-> StateAvailable
+
+        UpdateDB[("MongoDB Atlas:<br/>Product.findByIdAndUpdate")]:::db
+        StateAvailable --> UpdateDB
+        StateReserved --> UpdateDB
+        StateSold --> UpdateDB
+    end
+
+    %% Stage 4: Edit & Cascading Deletion
+    subgraph S4 ["4. Modification & Deletion Cascade"]
+        OwnerView --> EditAction["Click Edit Listing<br/>Route: /products/:id/edit"]:::client
+        EditAction --> SubmitEdit["PUT /api/products/:id<br/>Update Fields & Price"]:::api
+        SubmitEdit --> CheckEditAuth{"Verify Owner/Admin"}:::decision
+        CheckEditAuth -- "Allowed" --> UpdateDB
+        CheckEditAuth -- "Forbidden" --> DenyEdit["403 Forbidden"]:::decision
+
+        OwnerView --> DeleteAction["Click Delete Listing<br/>Confirmation Prompt"]:::client
+        DeleteAction --> SubmitDelete["DELETE /api/products/:id"]:::api
+        SubmitDelete --> CheckDeleteAuth{"Verify Owner/Admin"}:::decision
+        CheckDeleteAuth -- "Allowed" --> CascadeExec["1. Product.findByIdAndDelete(id)<br/>2. Enquiry.deleteMany({ productId: id })"]:::cascade
+        CheckDeleteAuth -- "Forbidden" --> DenyDelete["403 Forbidden"]:::decision
+        CascadeExec --> DBDeleted[("MongoDB Atlas:<br/>Product & Associated Enquiries<br/>Permanently Purged")]:::db
+    end
