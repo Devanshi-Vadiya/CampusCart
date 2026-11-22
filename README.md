@@ -7,6 +7,7 @@ CampusCart is a full-stack web application designed for college students to buy 
 ## 🚀 Features
 
 ### 1. Authentication & Roles (Auth.js)
+- **Login-First Website Architecture:** Mandatory authentication enforced via Edge Middleware (`middleware.js`). Unauthenticated visitors opening any marketplace URL (`/`, `/products/[id]`, `/dashboard`, `/admin`, etc.) are automatically redirected to `/login` with safe `callbackUrl` handling, while `/login`, `/register`, and `/api/auth/*` remain accessible.
 - **Role-Based Access Control:** Two distinct roles:
   - `USER` (Student): Can browse, create listings, manage their own items, and send/receive enquiries.
   - `ADMIN` (Administrator): Can manage, moderate, edit, and delete any listing across the entire marketplace.

@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawCallback = searchParams.get("callbackUrl") || "/";
+  const safeCallbackUrl =
+    rawCallback.startsWith("/") && !rawCallback.startsWith("//") ? rawCallback : "/";
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -40,7 +45,7 @@ export default function LoginPage() {
       if (res?.error) {
         setError("Invalid email or password.");
       } else {
-        router.push("/dashboard");
+        router.push(safeCallbackUrl);
         router.refresh();
       }
     } catch (err) {
@@ -53,17 +58,17 @@ export default function LoginPage() {
   function handleGoogleSignIn() {
     setError("");
     setGoogleLoading(true);
-    signIn("google", { callbackUrl: "/dashboard" });
+    signIn("google", { callbackUrl: safeCallbackUrl });
   }
 
   return (
     <div style={{ maxWidth: "440px", margin: "40px auto" }}>
       <div className="filter-card">
         <h1 className="page-title" style={{ fontSize: "22px", marginBottom: "6px", textAlign: "center" }}>
-          Welcome Back
+          Welcome to CampusCart
         </h1>
         <p className="page-subtitle" style={{ textAlign: "center", marginBottom: "20px" }}>
-          Log in to manage your listings and enquiries.
+          Please log in to browse, buy, and sell campus items.
         </p>
 
         {error && <div className="alert-box alert-error">{error}</div>}
@@ -144,11 +149,22 @@ export default function LoginPage() {
 
         <p style={{ textAlign: "center", fontSize: "13px", color: "#64748b", marginTop: "20px" }}>
           Don&apos;t have an account?{" "}
-          <Link href="/register" style={{ color: "#2563eb", fontWeight: 600 }}>
+          <Link
+            href={safeCallbackUrl !== "/" ? `/register?callbackUrl=${encodeURIComponent(safeCallbackUrl)}` : "/register"}
+            style={{ color: "#2563eb", fontWeight: 600 }}
+          >
             Sign Up
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="empty-state"><p className="empty-state-title">Loading login...</p></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

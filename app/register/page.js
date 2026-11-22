@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawCallback = searchParams.get("callbackUrl") || "/";
+  const safeCallbackUrl =
+    rawCallback.startsWith("/") && !rawCallback.startsWith("//") ? rawCallback : "/";
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -64,7 +69,8 @@ export default function RegisterPage() {
 
       setSuccess(`Account registered as ${data.user?.role || "USER"}! Redirecting to login...`);
       setTimeout(() => {
-        router.push("/login");
+        const dest = safeCallbackUrl !== "/" ? `/login?callbackUrl=${encodeURIComponent(safeCallbackUrl)}` : "/login";
+        router.push(dest);
       }, 1200);
     } catch (err) {
       setError(err.message);
@@ -179,11 +185,22 @@ export default function RegisterPage() {
 
         <p style={{ textAlign: "center", fontSize: "13px", color: "#64748b", marginTop: "20px" }}>
           Already have an account?{" "}
-          <Link href="/login" style={{ color: "#2563eb", fontWeight: 600 }}>
+          <Link
+            href={safeCallbackUrl !== "/" ? `/login?callbackUrl=${encodeURIComponent(safeCallbackUrl)}` : "/login"}
+            style={{ color: "#2563eb", fontWeight: 600 }}
+          >
             Log In
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="empty-state"><p className="empty-state-title">Loading registration...</p></div>}>
+      <RegisterForm />
+    </Suspense>
   );
 }
