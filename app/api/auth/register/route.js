@@ -7,7 +7,7 @@ export async function POST(request) {
   try {
     await connectDB();
     const body = await request.json();
-    const { name, email, password, confirmPassword } = body;
+    const { name, email, password, confirmPassword, role, adminSecret } = body;
 
     if (!name || !email || !password || !confirmPassword) {
       return NextResponse.json(
@@ -40,19 +40,39 @@ export async function POST(request) {
       );
     }
 
+    let assignedRole = "USER";
+
+    if (role === "ADMIN") {
+      const validAdminSecret =
+        process.env.ADMIN_SETUP_SECRET || process.env.AUTH_SECRET || "admin123";
+
+      if (!adminSecret || adminSecret !== validAdminSecret) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Admin account creation is restricted. You must provide a valid administrative security key.",
+          },
+          { status: 403 }
+        );
+      }
+
+      assignedRole = "ADMIN";
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const newUser = await User.create({
       name: name.trim(),
       email: cleanEmail,
       passwordHash,
-      role: "USER",
+      role: assignedRole,
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: "Registration successful",
+        message: `Account created successfully as ${assignedRole}`,
         user: {
           id: newUser._id.toString(),
           name: newUser.name,

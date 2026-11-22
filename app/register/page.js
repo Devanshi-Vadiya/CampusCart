@@ -11,6 +11,8 @@ export default function RegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
+    role: "USER",
+    adminSecret: "",
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -27,7 +29,7 @@ export default function RegisterPage() {
     setSuccess("");
 
     if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
-      setError("Please fill in all fields.");
+      setError("Please fill in all required fields.");
       return;
     }
 
@@ -38,6 +40,11 @@ export default function RegisterPage() {
 
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    if (formData.role === "ADMIN" && !formData.adminSecret.trim()) {
+      setError("Admin accounts require a verified administrative security key.");
       return;
     }
 
@@ -55,7 +62,7 @@ export default function RegisterPage() {
         throw new Error(data.error || "Registration failed");
       }
 
-      setSuccess("Account created successfully! Redirecting to login...");
+      setSuccess(`Account registered as ${data.user?.role || "USER"}! Redirecting to login...`);
       setTimeout(() => {
         router.push("/login");
       }, 1200);
@@ -67,7 +74,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div style={{ maxWidth: "440px", margin: "40px auto" }}>
+    <div style={{ maxWidth: "460px", margin: "40px auto" }}>
       <div className="filter-card">
         <h1 className="page-title" style={{ fontSize: "22px", marginBottom: "6px", textAlign: "center" }}>
           Create an Account
@@ -107,6 +114,39 @@ export default function RegisterPage() {
           </div>
 
           <div className="form-group">
+            <label className="form-label">Account Role *</label>
+            <select
+              name="role"
+              className="form-select"
+              value={formData.role}
+              onChange={handleChange}
+            >
+              <option value="USER">Student (USER) - Buy and Sell Campus Items</option>
+              <option value="ADMIN">Administrator (ADMIN) - Manage Marketplace</option>
+            </select>
+          </div>
+
+          {formData.role === "ADMIN" && (
+            <div className="form-group" style={{ backgroundColor: "#faf5ff", padding: "12px", borderRadius: "6px", border: "1px solid #e9d5ff" }}>
+              <label className="form-label" style={{ color: "#6b21a8" }}>
+                Admin Security Key *
+              </label>
+              <input
+                type="password"
+                name="adminSecret"
+                className="form-input"
+                placeholder="Enter administrative security key"
+                value={formData.adminSecret}
+                onChange={handleChange}
+                required
+              />
+              <span style={{ fontSize: "11px", color: "#7e22ce", marginTop: "4px" }}>
+                Admin accounts are restricted. A valid administrative key is required.
+              </span>
+            </div>
+          )}
+
+          <div className="form-group">
             <label className="form-label">Password (min 6 chars) *</label>
             <input
               type="password"
@@ -133,7 +173,7 @@ export default function RegisterPage() {
           </div>
 
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ marginTop: "6px" }}>
-            {loading ? "Creating Account..." : "Register as Student"}
+            {loading ? "Creating Account..." : `Register as ${formData.role === "ADMIN" ? "Administrator" : "Student"}`}
           </button>
         </form>
 
